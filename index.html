@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>APP EMS BIC</title>
+    <link rel="stylesheet" href="style.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css"
+    />
+  </head>
+  <body>
+    <!-- MÀN HÌNH ĐĂNG NHẬP -->
+    <div id="login-screen" class="screen active">
+      <div class="login-card">
+        <!-- Thay src bằng logo local của bạn -->
+        <img
+          src="https://via.placeholder.com/150x50?text=LOGO"
+          alt="Logo"
+          class="logo"
+        />
+        <h2>Đăng Nhập</h2>
+        <form id="login-form">
+          <div class="input-group">
+            <label for="username">Tài khoản</label>
+            <input type="text" id="username" required placeholder="Mã NV..." />
+          </div>
+          <div class="input-group">
+            <label for="password">Mật khẩu</label>
+            <input
+              type="password"
+              id="password"
+              required
+              placeholder="Nhập mật khẩu..."
+            />
+          </div>
+          <button type="submit" class="btn btn-primary">Đăng Nhập</button>
+          <p id="login-error" class="text-error hidden">
+            Sai tài khoản hoặc mật khẩu!
+          </p>
+        </form>
+      </div>
+    </div>
+
+    <!-- MÀN HÌNH ADMIN (Giao diện Desktop) -->
+    <div id="admin-screen" class="screen hidden">
+      <header class="navbar">
+        <div class="nav-brand">Admin Portal</div>
+        <div class="nav-user">
+          Xin chào, <span id="admin-name">Admin</span> |
+          <a href="#" onclick="logout()">Thoát</a>
+        </div>
+      </header>
+      <div class="app-body">
+        <aside class="sidebar">
+          <button
+            class="tab-btn active"
+            onclick="switchTab('admin', 'tab-master')"
+          >
+            Dữ Liệu chính
+          </button>
+          <button class="tab-btn" onclick="switchTab('admin', 'tab-po')">
+            Quản Lý LOT
+          </button>
+          <button class="tab-btn" onclick="switchTab('admin', 'tab-ng')">
+            Xử Lý Hàng NG
+          </button>
+          <button class="tab-btn" onclick="switchTab('admin', 'tab-matrix')">
+            Báo Cáo TK
+          </button>
+        </aside>
+        <main class="content">
+          <div id="tab-master" class="tab-content active">
+            <!-- Tách 2 cột: Cột trái form tạo, Cột phải danh sách -->
+            <div
+              style="
+                display: flex;
+                gap: 20px;
+                flex-wrap: wrap;
+                align-items: flex-start;
+              "
+            >
+              <!-- CỘT TRÁI: KHAI BÁO MÃ HÀNG -->
+              <div class="card form-card" style="flex: 1; min-width: 350px">
+                <h2 style="margin-bottom: 20px; color: var(--navy)">
+                  Khai Báo Mã Hàng & Lộ Trình
+                </h2>
+                <form id="form-create-product">
+                  <div class="input-group">
+                    <label>Mã Sản Phẩm</label>
+                    <input
+                      type="text"
+                      id="md-product-code"
+                      required
+                      placeholder="VD: SP-01"
+                      style="text-transform: uppercase"
+                    />
+                  </div>
+                  <div class="input-group">
+                    <label>Tên Sản Phẩm</label>
+                    <input
+                      type="text"
+                      id="md-product-name"
+                      required
+                      placeholder="VD: Bánh răng thép"
+                    />
+                  </div>
+                  <div class="input-group">
+                    <label>Định Tuyến Lộ Trình (Quy định đường đi)</label>
+                    <div
+                      id="routing-builder"
+                      style="
+                        border: 1px dashed #cbd5e0;
+                        padding: 15px;
+                        border-radius: 4px;
+                        background: #f7fafc;
+                        min-height: 50px;
+                      "
+                    ></div>
+                    <button
+                      type="button"
+                      class="btn btn-secondary"
+                      onclick="addRoutingStep()"
+                      style="margin-top: 10px; font-size: 14px"
+                    >
+                      + Thêm Trạm
+                    </button>
+                  </div>
+                  <button type="submit" class="btn btn-primary w-100">
+                    Lưu Mã Hàng
+                  </button>
+                </form>
+              </div>
+
+              <!-- CỘT PHẢI: DANH SÁCH MÃ HÀNG -->
+              <div class="card form-card" style="flex: 1.5; min-width: 400px">
+                <h3 style="color: var(--navy); margin-bottom: 15px">
+                  Dữ Liệu Mã Hàng Đã Lưu
+                </h3>
+                <input
+                  type="text"
+                  id="search-master"
+                  class="search-input w-100"
+                  placeholder="🔍 Tìm Mã hàng hoặc Tên hàng..."
+                  onkeyup="filterMasterData()"
+                  style="margin-bottom: 15px"
+                />
+                <div
+                  id="master-list-container"
+                  style="max-height: 500px; overflow-y: auto"
+                >
+                  <p>Đang tải dữ liệu...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB TẠO PO / LOT -->
+          <div id="tab-po" class="tab-content hidden">
+            <div
+              class="card form-card"
+              style="max-width: 600px; margin: 0 auto"
+            >
+              <h2 style="margin-bottom: 20px; color: var(--navy)">
+                Tạo LOT và Cấp Phát Sản Xuất
+              </h2>
+              <form id="form-create-po">
+                <div class="input-group">
+                  <label>Tiền tố số LOT (VD: PO1610)</label>
+                  <input
+                    type="text"
+                    id="po-prefix"
+                    required
+                    placeholder="VD: PO1610"
+                  />
+                </div>
+                <div class="input-group">
+                  <label>Mã Hàng (Gõ để tìm kiếm)</label>
+                  <!-- Thuộc tính list="product-suggestions" giúp input này có tính năng Autocomplete -->
+                  <input
+                    type="text"
+                    id="product-code"
+                    required
+                    placeholder="Gõ mã hàng..."
+                    style="text-transform: uppercase"
+                    list="product-suggestions"
+                    autocomplete="off"
+                  />
+                  <datalist id="product-suggestions"></datalist>
+                </div>
+                <div class="input-group" style="display: flex; gap: 10px">
+                  <div style="flex: 1">
+                    <label>Tổng Sản Lượng</label
+                    ><input type="number" id="po-total" required min="1" />
+                  </div>
+                  <div style="flex: 1">
+                    <label>SL 1 LOT (Kích thước chia)</label
+                    ><input type="number" id="po-split" required min="1" />
+                  </div>
+                </div>
+                <div class="input-group">
+                  <label>Ngày Cấp Phát</label>
+                  <input type="date" id="po-date" required />
+                </div>
+                <button type="submit" class="btn btn-primary w-100">
+                  Chẻ LOT & Cấp Phát Sản Xuất
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <!-- TAB XỬ LÝ HÀNG LỖI (NG) -->
+          <div id="tab-ng" class="tab-content hidden">
+            <div
+              class="card form-card"
+              style="max-width: 600px; margin: 0 auto"
+            >
+              <h2 style="margin-bottom: 20px; color: var(--maroon)">
+                Xử Lý Hàng Lỗi (NG)
+              </h2>
+              <p style="margin-bottom: 15px; font-size: 14px">
+                Xem bảng TK để biết số LOT có NG
+              </p>
+              <form id="form-resolve-ng">
+                <div class="input-group">
+                  <label>1. Chọn LOT</label>
+                  <select id="ng-po-select" required>
+                    <option value="">-- Vui lòng chờ tải dữ liệu --</option>
+                  </select>
+                </div>
+                <div class="input-group">
+                  <label>Nơi có hàng NG</label>
+                  <select id="ng-current-stage" required>
+                    <option value="">-- Vui lòng chờ tải dữ liệu --</option>
+                  </select>
+                </div>
+                <div class="input-group">
+                  <label>Nhập SL</label>
+                  <input
+                    type="number"
+                    id="ng-qty"
+                    required
+                    min="1"
+                    placeholder="Số lượng...."
+                  />
+                </div>
+                <div class="input-group">
+                  <label>Xử LÝ</label>
+                  <select
+                    id="ng-action"
+                    required
+                    onchange="toggleReworkStage()"
+                  >
+                    <option value="SCRAP">Báo Hủy (SCRAP)</option>
+                    <option value="REWORK">
+                      Làm lại (REWORK)-Đưa về LIne cũ
+                    </option>
+                  </select>
+                </div>
+                <div class="input-group hidden" id="group-return-stage">
+                  <label>Trả về đâu ?</label>
+                  <select id="ng-return-stage">
+                    <option value="">Chọn công đoạn</option>
+                  </select>
+                </div>
+                <button type="submit" class="btn btn-danger w-100">
+                  Xác Nhận
+                </button>
+              </form>
+            </div>
+          </div>
+          <div id="tab-matrix" class="tab-content hidden">
+            <h2>Bảng TK (WIP)</h2>
+            <p>BẢNG TỔNG KẾT - THEO CÔNG ĐOẠN</p>
+            <div class="toolbar">
+              <input
+                type="text"
+                id="search-date"
+                class="search-input"
+                placeholder="🔍 Tìm Ngày (VD: 04/10)"
+                onkeyup="filterMatrix()"
+              />
+              <input
+                type="text"
+                id="search-lot"
+                class="search-input"
+                placeholder="🔍 Tìm Số LOT"
+                onkeyup="filterMatrix()"
+              />
+              <input
+                type="text"
+                id="search-code"
+                class="search-input"
+                placeholder="🔍 Tìm Mã Hàng"
+                onkeyup="filterMatrix()"
+              />
+              <button class="btn btn-primary" onclick="fetchMatrixReport()">
+                Làm mới
+              </button>
+              <button
+                class="btn btn-secondary"
+                onclick="exportExcel()"
+                style="background-color: var(--green)"
+              >
+                Xuất Excel
+              </button>
+              <button class="btn btn-secondary" onclick="window.print()">
+                In Báo Cáo
+              </button>
+            </div>
+
+            <!-- CONTAINER CHỨA BẢNG DATA -->
+            <div id="matrix-table-container" style="overflow-x: auto">
+              <p>Đang tải dữ liệu...</p>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <!-- MÀN HÌNH LEADER (Giao diện Mobile-First) -->
+    <div id="leader-screen" class="screen hidden">
+      <header class="navbar mobile-nav">
+        <div class="nav-brand">
+          Xin chào,
+          <span id="leader-name" style="color: var(--lime); font-weight: bold"
+            >Leader</span
+          >
+          <div style="font-size: 13px; font-weight: normal; margin-top: 4px">
+            Line quản lý: <span id="leader-line">...</span>
+          </div>
+        </div>
+        <a
+          href="#"
+          class="logout-btn"
+          onclick="logout()"
+          style="color: var(--white); text-decoration: none; font-weight: bold"
+          >Thoát</a
+        >
+      </header>
+      <div class="tabs-mobile">
+        <button
+          class="tab-btn-mobile active"
+          onclick="switchTab('leader', 'tab-wip')"
+        >
+          Số lượng tồn
+        </button>
+        <button
+          class="tab-btn-mobile"
+          onclick="switchTab('leader', 'tab-action')"
+        >
+          Thao Tác
+        </button>
+      </div>
+      <main class="content-mobile">
+        <div style="margin-bottom: 12px">
+          <input
+            type="text"
+            id="search-leader-po"
+            class="search-input w-100"
+            placeholder="🔍 Tìm nhanh Số LOT hoặc Mã hàng..."
+            onkeyup="filterLeaderPOs()"
+            style="
+              padding: 12px;
+              border: 1px solid var(--navy);
+              color: var(--navy);
+              font-weight: bold;
+              font-size: 15px;
+            "
+          />
+        </div>
+        <div id="tab-wip" class="tab-content active">
+          <!-- JS sẽ tự động đổ các thẻ Card chứa WIP vào đây -->
+        </div>
+        <div id="tab-action" class="tab-content hidden">
+          <div class="card form-card">
+            <h3 style="color: var(--navy); margin-bottom: 15px">Giao Nhận</h3>
+            <div class="input-group">
+              <label>Ngày tháng</label>
+              <input type="date" id="action-date" required />
+            </div>
+            <div class="input-group">
+              <label>Chọn PO</label>
+              <select id="po-select">
+                <option>-- Đang tải dữ liệu --</option>
+              </select>
+            </div>
+            <!-- Các input số lượng giữ nguyên như cũ -->
+            <div class="input-group">
+              <label>Số lượng giao</label>
+              <input type="number" id="qty-pass" value="0" />
+            </div>
+            <div class="input-group">
+              <label class="text-error">Số lượng NG</label>
+              <input type="number" id="qty-ng" value="0" />
+            </div>
+            <button class="btn btn-primary w-100" onclick="submitMove()">
+              Xác Nhận
+            </button>
+            <button
+              id="btn-outsource"
+              class="btn btn-secondary w-100 hidden"
+              style="margin-top: 10px"
+            >
+              Xuất Gia Công Ngoài
+            </button>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
