@@ -414,29 +414,45 @@ async function fetchMatrixReport() {
     const data = await response.json();
     if (!data.matrix) return;
 
+    // Sử dụng globalStages nếu có, nếu không thì fallback
     const columns =
       globalStages.length > 0
         ? globalStages
         : [
-            { id: "Cutting", stage_name: "Cắt" },
-            { id: "NC", stage_name: "NC" },
-            { id: "MNC", stage_name: "MNC" },
-            { id: "Assy", stage_name: "Lắp Ráp" },
+            { id: 1, stage_name: "Cắt" },
+            { id: 2, stage_name: "NC" },
+            { id: 3, stage_name: "MNC" },
+            { id: 6, stage_name: "Lắp Ráp" },
           ];
 
     const rows = data.matrix.map((row) => {
       return {
-        production_date: "",
+        production_date: row.production_date, // Đã lấy được ngày từ API
         po_number: row.lot_number,
         product_code: row.product_code,
         total_qty: row.total_qty,
         total_ng: row.qty_ng,
         finished_qty: row.qty_done,
         stages: {
-          Cutting: { good: row.qty_cutting, ng: 0, outsource: 0 },
-          NC: { good: row.qty_nc, ng: 0, outsource: 0 },
-          MNC: { good: row.qty_mnc, ng: 0, outsource: 0 },
-          Assy: { good: row.qty_assy, ng: 0, outsource: 0 },
+          // Khai báo sẵn các ID để hứng dữ liệu bất kể dạng số hay chữ
+          1: { good: row.qty_cutting },
+          Cutting: { good: row.qty_cutting },
+          Cắt: { good: row.qty_cutting },
+          2: { good: row.qty_nc },
+          NC: { good: row.qty_nc },
+          3: { good: row.qty_mnc },
+          MNC: { good: row.qty_mnc },
+          4: { good: row.qty_gs_gs },
+          GS_GS: { good: row.qty_gs_gs },
+          5: { good: row.qty_gp_ge },
+          GP_GE: { good: row.qty_gp_ge },
+          6: { good: row.qty_assy },
+          Assy: { good: row.qty_assy },
+          "Lắp Ráp": { good: row.qty_assy },
+          7: { good: row.qty_kensa },
+          Kensa: { good: row.qty_kensa },
+          8: { good: row.qty_barry },
+          Barry: { good: row.qty_barry },
         },
       };
     });
