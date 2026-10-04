@@ -95,11 +95,30 @@ function navigateToRoleScreen() {
     document.getElementById("leader-screen").classList.remove("hidden");
     document.getElementById("leader-screen").classList.add("active");
     document.getElementById("leader-name").textContent = currentUser.username;
-    document.getElementById("leader-line").textContent =
-      currentUser.line_id + " công đoạn";
 
-    switchTab("leader", "tab-wip");
-    fetchPendingPOs();
+    // Tải danh sách trạm trước, sau đó lọc ra các trạm con thuộc Line này
+    loadNGDropdownsThorough().then(() => {
+      const myStages = globalStages.filter(
+        (s) => s.line_id === currentUser.line_id,
+      );
+      if (myStages.length > 0) {
+        const stageNames = myStages.map((s) => s.stage_name).join(", ");
+        document.getElementById("leader-line").textContent = `${stageNames}`;
+      } else {
+        document.getElementById("leader-line").textContent =
+          `Line: ${currentUser.line_id}`;
+      }
+
+      // Tải danh sách hàng chờ sau khi đã thiết lập xong UI
+      switchTab("leader", "tab-wip");
+      fetchPendingPOs();
+    });
+
+    // Ẩn/hiện nút Gia Công Ngoài
+    if (currentUser.line_id === "ASSY") {
+      document.getElementById("btn-outsource")?.classList.remove("hidden");
+    }
+
     leaderPollingInterval = setInterval(fetchPendingPOs, 5000);
   }
 }
@@ -139,43 +158,56 @@ function switchTab(role, tabId) {
 // ==========================================
 
 // --- KHAI BÁO CÔNG ĐOẠN ---
-// Sửa đổi cực kỳ quan trọng: Thêm Fallback array để cứu app nếu API rớt
 async function loadNGDropdownsThorough() {
-  // Đây là danh sách gốc đề phòng Worker chưa cập nhật / lỗi API
   const fallbackStages = [
-    { id: "Cutting", stage_name: "Cắt" },
-    { id: "NC", stage_name: "NC" },
-    { id: "MNC", stage_name: "MNC" },
-    { id: "GS_GS", stage_name: "GS_GS" },
-    { id: "GP_GE", stage_name: "GP_GE" },
-    { id: "Assy", stage_name: "Lắp Ráp" },
-    { id: "Kensa", stage_name: "Kensa" },
-    { id: "Barry", stage_name: "Barry" },
+    { id: "CAT", stage_name: "Cắt" },
+    { id: "NC1", stage_name: "NC1" },
+    { id: "MNC1", stage_name: "MNC1" },
+    { id: "GS_GV", stage_name: "GS-GV" },
+    { id: "GP_GE", stage_name: "GP-GE" },
+    { id: "LAP_RAP", stage_name: "Lắp ráp" },
   ];
 
   try {
     const stageRes = await fetch(`${API_BASE_URL}/api/stages`);
     const stageData = await stageRes.json();
-
-    if (stageData.data && stageData.data.length > 0) {
-      globalStages = stageData.data;
-    } else {
-      globalStages = fallbackStages; // Cứu cánh
-    }
+    globalStages =
+      stageData.data && stageData.data.length > 0
+        ? stageData.data
+        : fallbackStages;
   } catch (e) {
-    globalStages = fallbackStages; // Cứu cánh nếu mất mạng
+    globalStages = fallbackStages;
   }
 
-  // Render HTML cho dropdown NG (nếu có)
+  // Đổ dữ liệu vào Dropdown Công đoạn (Current Stage & Return Stage)
   let stageOpts = '<option value="">-- Chọn công đoạn --</option>';
   globalStages.forEach((col) => {
     stageOpts += `<option value="${col.id}">${col.stage_name}</option>`;
   });
-
   const curStage = document.getElementById("ng-current-stage");
   const retStage = document.getElementById("ng-return-stage");
   if (curStage) curStage.innerHTML = stageOpts;
   if (retStage) retStage.innerHTML = stageOpts;
+
+  // Gọi API lấy riêng các PO đang có hàng NG
+  try {
+    const ngRes = await fetch(`${API_BASE_URL}/api/ng/list`);
+    const ngData = await ngRes.json();
+    const poSelect = document.getElementById("ng-po-select");
+    if (poSelect) {
+      let poOpts = '<option value="">-- Chọn Lô / PO --</option>';
+      if (ngData.data && ngData.data.length > 0) {
+        ngData.data.forEach((po) => {
+          poOpts += `<option value="${po.lot_number}">${po.lot_number} [${po.product_code}] - Lỗi: ${po.ng_qty}</option>`;
+        });
+      } else {
+        poOpts = '<option value="">-- Hiện không có hàng NG nào --</option>';
+      }
+      poSelect.innerHTML = poOpts;
+    }
+  } catch (e) {
+    console.error("Lỗi nạp danh sách NG:", e);
+  }
 }
 
 let routingStepCount = 0;
@@ -414,45 +446,34 @@ async function fetchMatrixReport() {
     const data = await response.json();
     if (!data.matrix) return;
 
-    // Sử dụng globalStages nếu có, nếu không thì fallback
-    const columns =
-      globalStages.length > 0
-        ? globalStages
-        : [
-            { id: 1, stage_name: "Cắt" },
-            { id: 2, stage_name: "NC" },
-            { id: 3, stage_name: "MNC" },
-            { id: 6, stage_name: "Lắp Ráp" },
-          ];
+    // Dùng globalStages (16 trạm) để làm cột Header cho Bảng TK
+    const columns = globalStages;
 
     const rows = data.matrix.map((row) => {
       return {
-        production_date: row.production_date, // Đã lấy được ngày từ API
+        production_date: row.production_date,
         po_number: row.lot_number,
         product_code: row.product_code,
         total_qty: row.total_qty,
         total_ng: row.qty_ng,
         finished_qty: row.qty_done,
         stages: {
-          // Khai báo sẵn các ID để hứng dữ liệu bất kể dạng số hay chữ
-          1: { good: row.qty_cutting },
-          Cutting: { good: row.qty_cutting },
-          Cắt: { good: row.qty_cutting },
-          2: { good: row.qty_nc },
-          NC: { good: row.qty_nc },
-          3: { good: row.qty_mnc },
-          MNC: { good: row.qty_mnc },
-          4: { good: row.qty_gs_gs },
-          GS_GS: { good: row.qty_gs_gs },
-          5: { good: row.qty_gp_ge },
+          CAT: { good: row.qty_cat },
+          NHIET_LUYEN: { good: row.qty_nhiet_luyen },
+          DO_CUNG: { good: row.qty_do_cung },
+          NC1: { good: row.qty_nc1 },
+          NC2: { good: row.qty_nc2 },
+          NC3: { good: row.qty_nc3 },
+          MNC1: { good: row.qty_mnc1 },
+          MNC2: { good: row.qty_mnc2 },
+          MNC3: { good: row.qty_mnc3 },
+          GS_GV: { good: row.qty_gs_gv },
           GP_GE: { good: row.qty_gp_ge },
-          6: { good: row.qty_assy },
-          Assy: { good: row.qty_assy },
-          "Lắp Ráp": { good: row.qty_assy },
-          7: { good: row.qty_kensa },
-          Kensa: { good: row.qty_kensa },
-          8: { good: row.qty_barry },
-          Barry: { good: row.qty_barry },
+          LAP_RAP: { good: row.qty_lap_rap },
+          DONG_THUNG: { good: row.qty_dong_thung },
+          XUAT_GCN: { good: row.qty_xuat_gcn },
+          NHAN_GCN: { good: row.qty_nhan_gcn },
+          KIEM_TRA: { good: row.qty_kiem_tra },
         },
       };
     });
@@ -523,6 +544,142 @@ window.filterMatrix = function () {
     return matchDate && matchLot && matchCode;
   });
   renderMatrixTable(filtered);
+};
+
+// ==========================================
+// KHU VỰC LEADER (TẢI HÀNG CHỜ & KÉO/ĐẨY)
+// ==========================================
+
+async function fetchPendingPOs() {
+  if (!currentUser || currentUser.role !== "LEADER") return;
+
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/api/leader/pending?line_id=${currentUser.line_id}`,
+    );
+    const result = await response.json();
+    leaderPOsCache = result.data || [];
+    filterLeaderPOs();
+  } catch (error) {
+    const wipContainer = document.getElementById("tab-wip");
+    if (wipContainer)
+      wipContainer.innerHTML = `<div class="card"><p class="text-error">Lỗi kết nối máy chủ API.</p></div>`;
+  }
+}
+
+function renderLeaderPOs(data) {
+  const selectEl = document.getElementById("po-select");
+  const wipContainer = document.getElementById("tab-wip");
+  if (!selectEl || !wipContainer) return;
+
+  const currentSelection = selectEl.value;
+  selectEl.innerHTML = '<option value="">-- Chọn PO để xử lý --</option>';
+  wipContainer.innerHTML = "";
+
+  if (data.length > 0) {
+    data.forEach((po) => {
+      const optionValue = JSON.stringify({
+        po_id: po.po_id,
+        product_id: po.product_id,
+        from_stage: po.from_stage,
+        max_qty: po.qty_available,
+      });
+
+      const optionText = `${po.po_number} [${po.product_code}] - Tồn: ${po.qty_available} | Đang ở: ${po.from_stage_name} ➔ Trạm tới: ${po.to_stage_name}`;
+      const option = document.createElement("option");
+      option.value = optionValue;
+      option.textContent = optionText;
+      selectEl.appendChild(option);
+
+      const card = document.createElement("div");
+      card.className = "card";
+      card.style.borderLeft = "4px solid var(--lime)";
+      card.innerHTML = `
+                <h3 style="color: var(--navy); margin-bottom: 8px;">${po.po_number} <span style="font-size: 14px; color: var(--gray-dark);">(${po.product_code})</span></h3>
+                <p style="margin-bottom: 5px;">📦 Đang chờ: <strong class="text-primary" style="font-size: 18px;">${po.qty_available}</strong></p>
+                <p style="font-size: 14px;">📍 Hiện tại: <strong style="color: var(--maroon);">${po.from_stage_name}</strong></p>
+                <p style="font-size: 14px;">➔ Sau khi PASS sẽ đến: <strong>${po.to_stage_name}</strong></p>
+            `;
+      wipContainer.appendChild(card);
+    });
+
+    if ([...selectEl.options].some((opt) => opt.value === currentSelection)) {
+      selectEl.value = currentSelection;
+    }
+  } else {
+    selectEl.innerHTML =
+      '<option value="">-- Không có hàng thỏa mãn --</option>';
+    wipContainer.innerHTML = `<div class="card" style="text-align: center; color: var(--gray-dark); padding: 30px;">Không có lô hàng nào kẹt tại công đoạn bạn quản lý.</div>`;
+  }
+}
+
+window.filterLeaderPOs = function () {
+  const searchInput = document.getElementById("search-leader-po");
+  if (!searchInput) return;
+
+  const searchVal = searchInput.value.toLowerCase();
+  const filtered = leaderPOsCache.filter((po) => {
+    return (
+      (po.po_number || "").toLowerCase().includes(searchVal) ||
+      (po.product_code || "").toLowerCase().includes(searchVal)
+    );
+  });
+  renderLeaderPOs(filtered);
+};
+
+window.submitMove = async function () {
+  const selectEl = document.getElementById("po-select");
+  if (!selectEl) return;
+  const selectedValue = selectEl.value;
+
+  if (!selectedValue) {
+    alert("Vui lòng chọn 1 PO!");
+    return;
+  }
+
+  const routeData = JSON.parse(selectedValue);
+  const qtyPass = parseInt(document.getElementById("qty-pass").value) || 0;
+  const qtyNg = parseInt(document.getElementById("qty-ng").value) || 0;
+  const totalInput = qtyPass + qtyNg;
+
+  if (totalInput <= 0) {
+    alert("Vui lòng nhập số lượng PASS hoặc NG!");
+    return;
+  }
+
+  if (totalInput > routeData.max_qty) {
+    alert(
+      `Số lượng thao tác (${totalInput}) vượt quá số lượng tồn (${routeData.max_qty})!`,
+    );
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/move`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lot_number: routeData.po_id,
+        product_id: routeData.product_id,
+        from_stage: routeData.from_stage,
+        qty_pass: qtyPass,
+        qty_ng: qtyNg,
+        user_id: currentUser.id,
+      }),
+    });
+
+    const data = await response.json();
+    if (response.ok) {
+      alert("Đã cập nhật luân chuyển thành công!");
+      document.getElementById("qty-pass").value = 0;
+      document.getElementById("qty-ng").value = 0;
+      fetchPendingPOs();
+    } else {
+      alert(data.error);
+    }
+  } catch (error) {
+    alert("Lỗi kết nối máy chủ API!");
+  }
 };
 
 // ==========================================
