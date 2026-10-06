@@ -7,11 +7,7 @@ let productsCache = [];
 let adminPollingInterval = null;
 let leaderPollingInterval = null;
 let tempUserForPassChange = null;
-let lastPendingDataString = ""; // Dùng cho Leader để tránh load lại nhấp nháy
 
-// ==========================================
-// 1. XỬ LÝ ĐĂNG NHẬP, ĐIỀU HƯỚNG
-// ==========================================
 window.addEventListener("DOMContentLoaded", () => {
   setDefaultDates();
   const savedUser = localStorage.getItem("ems_user");
@@ -25,7 +21,7 @@ document
   .getElementById("login-form")
   .addEventListener("submit", async function (e) {
     e.preventDefault();
-    const usernameInput = document.getElementById("username").value.trim();
+    const usernameInput = document.getElementById("username").value;
     const passwordInput = document.getElementById("password").value;
     const errorMsg = document.getElementById("login-error");
 
@@ -39,22 +35,17 @@ document
           password: passwordInput,
         }),
       });
-
       const data = await response.json();
-
       if (!response.ok) {
         errorMsg.textContent = data.error || "Lỗi đăng nhập!";
         errorMsg.classList.remove("hidden");
         return;
       }
-
-      // Đổi pass nếu pass là 000
       if (data.user.password_hash === "000") {
         tempUserForPassChange = data.user;
         document.getElementById("change-pass-modal").classList.remove("hidden");
         return;
       }
-
       currentUser = data.user;
       localStorage.setItem("ems_user", JSON.stringify(currentUser));
       navigateToRoleScreen();
@@ -112,25 +103,21 @@ function navigateToRoleScreen() {
   });
   if (adminPollingInterval) clearInterval(adminPollingInterval);
   if (leaderPollingInterval) clearInterval(leaderPollingInterval);
-
   const displayName = currentUser.full_name || currentUser.username;
 
   if (currentUser.role === "ADMIN") {
     document.getElementById("admin-screen").classList.remove("hidden");
     document.getElementById("admin-screen").classList.add("active");
     document.getElementById("admin-name").textContent = displayName;
-
     loadNGDropdownsThorough().then(() => {
       fetchProductsList();
     });
-
     switchTab("admin", "tab-matrix");
     adminPollingInterval = setInterval(fetchMatrixReport, 5000);
   } else if (currentUser.role === "LEADER") {
     document.getElementById("leader-screen").classList.remove("hidden");
     document.getElementById("leader-screen").classList.add("active");
     document.getElementById("leader-name").textContent = displayName;
-
     loadNGDropdownsThorough().then(() => {
       const myStages = globalStages.filter(
         (s) => s.line_id === currentUser.line_id,
@@ -146,11 +133,9 @@ function navigateToRoleScreen() {
       switchTab("leader", "tab-wip");
       fetchPendingPOs();
     });
-
     if (currentUser.line_id === "ASSY") {
       document.getElementById("btn-outsource")?.classList.remove("hidden");
     }
-
     leaderPollingInterval = setInterval(fetchPendingPOs, 5000);
   }
 }
@@ -184,9 +169,6 @@ function switchTab(role, tabId) {
   if (role === "admin" && tabId === "tab-history") fetchHistoryLog();
 }
 
-// ==========================================
-// 2. ADMIN: TẠO MÃ, PO, MATRIX, HISTORY
-// ==========================================
 async function loadNGDropdownsThorough() {
   const fallbackStages = [{ id: "CAT", stage_name: "Cắt" }];
   try {
@@ -319,101 +301,46 @@ function renderMasterTable(data) {
   container.innerHTML = html + `</tbody></table>`;
 }
 
-window.filterMasterData = function () {
-  const val = (
-    document.getElementById("search-master")?.value || ""
-  ).toLowerCase();
-  renderMasterTable(
-    productsCache.filter(
-      (p) =>
-        (p.product_code || "").toLowerCase().includes(val) ||
-        (p.product_name || "").toLowerCase().includes(val),
-    ),
-  );
-};
-
 const formCreatePO = document.getElementById("form-create-po");
 if (formCreatePO) {
   formCreatePO.addEventListener("submit", async function (e) {
     e.preventDefault();
-    if (!currentUser) return;
-
-    const prefix = document
-      .getElementById("po-prefix")
-      .value.trim()
-      .toUpperCase();
-    const productCode = document
-      .getElementById("product-code")
-      .value.trim()
-      .toUpperCase();
-    const poDate = document.getElementById("po-date").value;
-    const totalQty = parseInt(document.getElementById("po-total").value);
     const splitQty = parseInt(document.getElementById("po-split").value);
-
-    if (splitQty > totalQty) {
-      alert("Kích thước 1 LOT không được lớn hơn Tổng sản lượng!");
-      return;
-    }
-
+    const totalQty = parseInt(document.getElementById("po-total").value);
+    if (splitQty > totalQty) return alert("Kích thước 1 LOT quá lớn!");
     const lots = [];
     let remaining = totalQty;
     let counter = 1;
-
     while (remaining > 0) {
-      const qtyForThisLot = remaining > splitQty ? splitQty : remaining;
-      const lotNumber = `${prefix}-${String(counter).padStart(2, "0")}`;
-      lots.push({ po_number: lotNumber, qty: qtyForThisLot });
-      remaining -= qtyForThisLot;
+      const qty = remaining > splitQty ? splitQty : remaining;
+      lots.push({
+        po_number: `${document.getElementById("po-prefix").value.trim().toUpperCase()}-${String(counter).padStart(2, "0")}`,
+        qty,
+      });
+      remaining -= qty;
       counter++;
     }
-
-    // ĐÃ KHÔI PHỤC: Câu thông báo chi tiết số lượng từng LOT
-    const confirmMsg = `Hệ thống sẽ chẻ thành ${lots.length} LOT (${lots.map((l) => l.qty).join(", ")}).\nBạn có chắc chắn?`;
-    if (!confirm(confirmMsg)) return;
-
-    let successCount = 0;
-    let errorMessages = [];
+    if (!confirm(`Sẽ chẻ thành ${lots.length} LOT. Tiếp tục?`)) return;
 
     for (const lot of lots) {
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/po/create`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            po_number: lot.po_number,
-            product_code: productCode,
-            production_date: poDate,
-            total_qty: lot.qty,
-            user_id: currentUser.id,
-          }),
-        });
-        const data = await response.json();
-
-        if (response.ok) {
-          successCount++;
-        } else {
-          errorMessages.push(`Lỗi LOT ${lot.po_number}: ${data.error}`);
-        }
-      } catch (err) {
-        errorMessages.push(`Lỗi kết nối khi tạo LOT ${lot.po_number}`);
-      }
+      await fetch(`${API_BASE_URL}/api/po/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          po_number: lot.po_number,
+          product_code: document
+            .getElementById("product-code")
+            .value.trim()
+            .toUpperCase(),
+          production_date: document.getElementById("po-date").value,
+          total_qty: lot.qty,
+          user_id: currentUser.id,
+        }),
+      });
     }
-
-    // ĐÃ KHÔI PHỤC: Báo cáo thành công hoặc liệt kê danh sách lỗi
-    if (errorMessages.length > 0) {
-      alert(
-        `Đã tạo được ${successCount}/${lots.length} LOT.\nDanh sách lỗi:\n` +
-          errorMessages.join("\n"),
-      );
-    } else {
-      alert(
-        `Đã cấp phát THÀNH CÔNG ${successCount}/${lots.length} LOT vào dây chuyền!`,
-      );
-      formCreatePO.reset();
-      setDefaultDates();
-    }
-
-    fetchMatrixReport(); // Cập nhật lại Bảng theo dõi Matrix
+    alert("Cấp phát xong!");
+    formCreatePO.reset();
+    fetchMatrixReport();
   });
 }
 
@@ -423,7 +350,6 @@ async function fetchMatrixReport() {
     const response = await fetch(`${API_BASE_URL}/api/dashboard/matrix`);
     const data = await response.json();
     if (!data.matrix) return;
-
     const columns = globalStages;
     const rows = data.matrix.map((row) => {
       const stages = {};
@@ -462,6 +388,7 @@ function renderMatrixTable(rows) {
     KENSA: "#eceff1",
   };
 
+  // TÁCH ĐÔI BẢNG MATRIX: CỘT OK & NG
   let tableHTML = `<table class="matrix-table" id="export-table"><thead><tr>`;
   tableHTML += `<th rowspan="2" style="vertical-align: middle;">Ngày</th><th rowspan="2" style="vertical-align: middle;">Số LOT</th><th rowspan="2" style="vertical-align: middle;">Mã Hàng</th><th rowspan="2" style="vertical-align: middle;">Tổng</th>`;
 
@@ -469,45 +396,38 @@ function renderMatrixTable(rows) {
     tableHTML += `<th colspan="2" style="background-color: ${lineColors[col.line_id] || "transparent"}; border-bottom:1px solid #ccc; text-align:center;">${col.stage_name}</th>`;
   });
   tableHTML += `<th rowspan="2" style="vertical-align: middle;">KHO</th></tr><tr>`;
-
   currentMatrixData.columns.forEach((col) => {
     tableHTML += `<th style="background-color: ${lineColors[col.line_id] || "transparent"}; color: #48BB78; font-size:11px;">OK</th><th style="background-color: ${lineColors[col.line_id] || "transparent"}; color: #ea580c; font-size:11px; border-right: 2px solid rgba(0,0,0,0.1);">NG</th>`;
   });
   tableHTML += `</tr></thead><tbody>`;
 
-  if (rows.length === 0) {
-    tableHTML += `<tr><td colspan="${currentMatrixData.columns.length * 2 + 5}" style="text-align: center; padding: 20px;">Không tìm thấy dữ liệu.</td></tr>`;
-  }
-
   rows.forEach((row) => {
     tableHTML += `<tr><td>${row.production_date || "-"}</td><td style="font-weight:bold; color:var(--navy);">${row.po_number}</td><td>${row.product_code}</td><td style="font-weight:bold;">${row.total_qty}</td>`;
-
     currentMatrixData.columns.forEach((col) => {
       const stg = row.stages[col.id];
       let timeStr = "Chưa thao tác";
       if (stg && stg.date) {
-        try {
-          timeStr = new Date(stg.date.replace(" ", "T") + "Z")
-            .toLocaleString("vi-VN", {
-              timeZone: "Asia/Ho_Chi_Minh",
-              hour12: false,
-              day: "2-digit",
-              month: "2-digit",
-              year: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            })
-            .replace(",", "");
-        } catch (e) {}
+        timeStr = new Date(stg.date.replace(" ", "T") + "Z")
+          .toLocaleString("vi-VN", {
+            timeZone: "Asia/Ho_Chi_Minh",
+            hour12: false,
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+          .replace(",", "");
       }
 
+      // CỘT OK
       tableHTML +=
-        stg && stg.good > 0
+        stg.good > 0
           ? `<td class="has-tooltip" data-time="${timeStr}" style="background-color: ${lineColors[col.line_id] || "transparent"}; text-align:center;"><span class="badge-good">${stg.good}</span></td>`
           : `<td style="background-color: ${lineColors[col.line_id] || "transparent"}; text-align:center;"><span class="cell-empty">-</span></td>`;
-
+      // CỘT NG
       tableHTML +=
-        stg && stg.ng > 0
+        stg.ng > 0
           ? `<td style="background-color: ${lineColors[col.line_id] || "transparent"}; text-align:center; border-right: 2px solid rgba(0,0,0,0.1);"><span style="background:#ea580c; color:#fff; border-radius:4px; padding: 2px 6px; font-size: 11px;">${stg.ng}</span></td>`
           : `<td style="background-color: ${lineColors[col.line_id] || "transparent"}; text-align:center; border-right: 2px solid rgba(0,0,0,0.1);"><span class="cell-empty">-</span></td>`;
     });
@@ -537,6 +457,7 @@ window.filterMatrix = function () {
   );
 };
 
+// --- GỌI LỊCH SỬ TỪ WORKER ---
 async function fetchHistoryLog() {
   try {
     const res = await fetch(`${API_BASE_URL}/api/history`);
@@ -547,41 +468,36 @@ async function fetchHistoryLog() {
     if (result.data && result.data.length > 0) {
       tbody.innerHTML = result.data
         .map((log) => {
-          let timeStr = "Chưa rõ";
-          if (log.timestamp) {
-            try {
-              const utcDate = new Date(log.timestamp.replace(" ", "T") + "Z");
-              timeStr = utcDate.toLocaleString("vi-VN", {
-                timeZone: "Asia/Ho_Chi_Minh",
-                hour12: false,
-              });
-            } catch (e) {}
-          }
+          const time = new Date(
+            log.timestamp.replace(" ", "T") + "Z",
+          ).toLocaleString("vi-VN", {
+            timeZone: "Asia/Ho_Chi_Minh",
+            hour12: false,
+          });
           const typeStyle =
             log.type === "PASS"
               ? "color:#48BB78; font-weight:bold;"
               : "color:#ea580c; font-weight:bold;";
           const nameStr = log.full_name
             ? `${log.full_name} (${log.username})`
-            : log.username || "Hệ thống";
-
-          return `<tr><td>${timeStr}</td><td>${nameStr}</td><td style="color:var(--navy); font-weight:bold;">${log.po_id || "-"}</td><td style="${typeStyle}">${log.type || "-"}</td><td style="font-weight:bold;">${log.qty || 0}</td><td>${log.from_stage || "-"}</td><td>${log.to_stage || "-"}</td></tr>`;
+            : log.username;
+          return `<tr><td>${time}</td><td>${nameStr}</td><td style="color:var(--navy); font-weight:bold;">${log.po_id}</td><td style="${typeStyle}">${log.type}</td><td>${log.qty}</td><td>${log.from_stage}</td><td>${log.to_stage}</td></tr>`;
         })
         .join("");
     } else {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 20px;">Chưa có giao dịch nào!</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center;">Chưa có giao dịch nào!</td></tr>`;
     }
   } catch (e) {
-    console.error("Lỗi tải lịch sử:", e);
-    const tbody = document.getElementById("history-tbody");
-    if (tbody)
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: red;">Lỗi kết nối API!</td></tr>`;
+    console.error(e);
   }
 }
 
-// ==========================================
-// 3. LEADER: TẢI HÀNG CHỜ & KÉO ĐẨY
-// ==========================================
+// Biến lưu trữ dữ liệu cũ để so sánh ngầm
+let lastPendingDataString = "";
+
+// Biến lưu trữ dữ liệu cũ để so sánh ngầm
+let lastPendingDataString = "";
+
 async function fetchPendingPOs() {
   if (!currentUser || currentUser.role !== "LEADER") return;
   try {
@@ -591,81 +507,90 @@ async function fetchPendingPOs() {
     const result = await response.json();
 
     const newDataString = JSON.stringify(result.data || []);
+    // Nếu không có thay đổi, bỏ qua không làm mới màn hình
     if (newDataString === lastPendingDataString) return;
 
     lastPendingDataString = newDataString;
     leaderPOsCache = result.data || [];
+
+    // Cập nhật dữ liệu vào 2 ô Tìm kiếm mới
     populateLeaderSearchDropdowns();
-  } catch (error) {}
+  } catch (error) {
+    console.error("Lỗi cập nhật hàng chờ:", error);
+  }
 }
 
-window.populateLeaderSearchDropdowns = function () {
-  const productList = document.getElementById("leader-product-list");
-  if (!productList) {
+// HÀM MỚI 1: Nạp danh sách Mã Hàng vào Khung 1
+function populateLeaderSearchDropdowns() {
+  const productSelect = document.getElementById("search-leader-product");
+  if (!productSelect) {
     filterLeaderPOs();
     return;
   }
 
-  // Lọc ra các mã hàng duy nhất
+  // Tự động quét tìm các Mã Hàng đang kẹt ở trạm này (loại bỏ trùng lặp)
   const uniqueProducts = [
     ...new Set(leaderPOsCache.map((po) => po.product_code)),
   ].filter(Boolean);
+  const currentProd = productSelect.value;
 
-  // Bơm danh sách vào thẻ datalist để làm gợi ý
-  productList.innerHTML = uniqueProducts
-    .map((p) => `<option value="${p}">`)
-    .join("");
+  productSelect.innerHTML =
+    '<option value="">-- Tất cả Mã Hàng --</option>' +
+    uniqueProducts.map((p) => `<option value="${p}">${p}</option>`).join("");
+
+  // Giữ nguyên lựa chọn cũ nếu có
+  if (uniqueProducts.includes(currentProd)) productSelect.value = currentProd;
 
   updateLeaderLotOptions();
-};
+}
 
+// HÀM MỚI 2: Xử lý phụ thuộc Khung 2 (Chỉ hiện LOT của mã hàng đã chọn)
 window.updateLeaderLotOptions = function () {
-  const productInput = document.getElementById("search-leader-product");
-  const lotList = document.getElementById("leader-lot-list");
-  if (!productInput || !lotList) return;
+  const productSelect = document.getElementById("search-leader-product");
+  const lotSelect = document.getElementById("search-leader-lot");
+  if (!productSelect || !lotSelect) return;
 
-  const selectedProduct = productInput.value.trim().toUpperCase();
+  const selectedProduct = productSelect.value;
+
+  // Lọc danh sách LOT dựa trên Mã Hàng đã chọn ở Khung 1
   let availableLots = leaderPOsCache;
-
-  // Nếu Leader gõ Mã hàng, lọc ra các số LOT thuộc mã đó (hoặc chứa chữ đó)
   if (selectedProduct) {
-    availableLots = leaderPOsCache.filter((po) =>
-      (po.product_code || "").toUpperCase().includes(selectedProduct),
+    availableLots = leaderPOsCache.filter(
+      (po) => po.product_code === selectedProduct,
     );
   }
 
+  // Lấy danh sách Số LOT duy nhất
   const uniqueLots = [
     ...new Set(availableLots.map((po) => po.po_number)),
   ].filter(Boolean);
+  const currentLot = lotSelect.value;
 
-  // Bơm danh sách LOT tương ứng vào datalist 2
-  lotList.innerHTML = uniqueLots.map((l) => `<option value="${l}">`).join("");
+  lotSelect.innerHTML =
+    '<option value="">-- Tất cả Số LOT --</option>' +
+    uniqueLots.map((l) => `<option value="${l}">${l}</option>`).join("");
 
+  if (uniqueLots.includes(currentLot)) lotSelect.value = currentLot;
+
+  // Sau khi nạp xong LOT thì gọi lệnh lọc màn hình chính
   filterLeaderPOs();
 };
 
+// ĐÃ SỬA: Lọc danh sách hàng hiển thị dựa trên cả 2 Khung
 window.filterLeaderPOs = function () {
-  const prodVal =
-    document
-      .getElementById("search-leader-product")
-      ?.value.trim()
-      .toUpperCase() || "";
-  const lotVal =
-    document.getElementById("search-leader-lot")?.value.trim().toUpperCase() ||
-    "";
+  const prodVal = document.getElementById("search-leader-product")?.value || "";
+  const lotVal = document.getElementById("search-leader-lot")?.value || "";
 
   const filtered = leaderPOsCache.filter((po) => {
-    // Dùng includes để chỉ cần gõ 1 phần (VD: gõ "TB" sẽ ra "TB-30")
-    const matchProd =
-      prodVal === "" || (po.product_code || "").toUpperCase().includes(prodVal);
-    const matchLot =
-      lotVal === "" || (po.po_number || "").toUpperCase().includes(lotVal);
+    const matchProd = prodVal === "" || po.product_code === prodVal;
+    const matchLot = lotVal === "" || po.po_number === lotVal;
     return matchProd && matchLot;
   });
 
   renderLeaderPOs(filtered);
 };
 
+// ĐÃ SỬA: Lọc danh sách hàng hiển thị dựa trên cả 2 Khung
 window.filterLeaderPOs = function () {
   const prodVal = document.getElementById("search-leader-product")?.value || "";
   const lotVal = document.getElementById("search-leader-lot")?.value || "";
@@ -684,6 +609,7 @@ function renderLeaderPOs(data) {
   const wipContainer = document.getElementById("tab-wip");
   if (!selectEl || !wipContainer) return;
 
+  // BƯỚC 1: Bắt chết ID của PO đang được chọn (Chống mất kết nối khi số lượng thay đổi)
   let currentSelectedPoId = null;
   if (selectEl.value) {
     try {
@@ -738,10 +664,16 @@ function renderLeaderPOs(data) {
       const card = document.createElement("div");
       card.className = "card";
       card.style.borderLeft = "4px solid var(--lime)";
-      card.innerHTML = `<h3 style="color: var(--navy); margin-bottom: 8px;">${po.po_number} <span style="font-size: 14px; color: var(--gray-dark);">(${po.product_code})</span></h3><p style="margin-bottom: 5px;">📦 Đang chờ: <strong class="text-primary" style="font-size: 18px;">${po.qty_available}</strong></p><p style="font-size: 14px;">📍 Hiện tại: <strong style="color: var(--maroon);">${currentStageName}</strong></p><p style="font-size: 14px;">➔ Sau khi PASS sẽ đến: <strong>${toStageName}</strong></p>`;
+      card.innerHTML = `
+                <h3 style="color: var(--navy); margin-bottom: 8px;">${po.po_number} <span style="font-size: 14px; color: var(--gray-dark);">(${po.product_code})</span></h3>
+                <p style="margin-bottom: 5px;">📦 Đang chờ: <strong class="text-primary" style="font-size: 18px;">${po.qty_available}</strong></p>
+                <p style="font-size: 14px;">📍 Hiện tại: <strong style="color: var(--maroon);">${currentStageName}</strong></p>
+                <p style="font-size: 14px;">➔ Sau khi PASS sẽ đến: <strong>${toStageName}</strong></p>
+            `;
       wipContainer.appendChild(card);
     });
 
+    // BƯỚC 2: Khôi phục lại đúng PO đang được chọn dựa trên po_id (Dù số lượng tồn thay đổi vẫn giữ được)
     if (currentSelectedPoId) {
       const options = Array.from(selectEl.options);
       const targetOpt = options.find((opt) => {
@@ -752,57 +684,61 @@ function renderLeaderPOs(data) {
           return false;
         }
       });
-      if (targetOpt) selectEl.value = targetOpt.value;
+      if (targetOpt) {
+        selectEl.value = targetOpt.value;
+      }
     }
   } else {
-    selectEl.innerHTML = '<option value="">Chưa có dữ liệu</option>';
+    selectEl.innerHTML =
+      '<option value="">-- Không có hàng thỏa mãn --</option>';
     wipContainer.innerHTML = `<div class="card" style="text-align: center; color: var(--gray-dark); padding: 30px;">Không có lô hàng nào kẹt tại công đoạn bạn quản lý.</div>`;
   }
 }
-
+window.filterLeaderPOs = function () {
+  const val = (
+    document.getElementById("search-leader-po")?.value || ""
+  ).toLowerCase();
+  renderLeaderPOs(
+    leaderPOsCache.filter(
+      (po) =>
+        (po.po_number || "").toLowerCase().includes(val) ||
+        (po.product_code || "").toLowerCase().includes(val),
+    ),
+  );
+};
 window.submitMove = async function () {
-  const selectEl = document.getElementById("po-select");
-  if (!selectEl) return;
-  const selectedValue = selectEl.value;
-  if (!selectedValue) return alert("Vui lòng chọn 1 PO!");
-
-  const routeData = JSON.parse(selectedValue);
-  const qtyPass = parseInt(document.getElementById("qty-pass").value) || 0;
-  const qtyNg = parseInt(document.getElementById("qty-ng").value) || 0;
-  if (qtyPass + qtyNg <= 0)
-    return alert("Vui lòng nhập số lượng PASS hoặc NG!");
-  if (qtyPass + qtyNg > routeData.max_qty)
-    return alert(
-      `Số lượng thao tác (${qtyPass + qtyNg}) vượt quá số lượng tồn (${routeData.max_qty})!`,
-    );
-
+  const v = document.getElementById("po-select")?.value;
+  if (!v) return alert("Chọn PO!");
+  const d = JSON.parse(v);
+  const p = parseInt(document.getElementById("qty-pass").value) || 0;
+  const n = parseInt(document.getElementById("qty-ng").value) || 0;
+  if (p + n <= 0) return alert("Nhập số lượng!");
+  if (p + n > d.max_qty) return alert("Vượt tồn kho!");
   try {
-    const response = await fetch(`${API_BASE_URL}/api/move`, {
+    const r = await fetch(`${API_BASE_URL}/api/move`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        lot_number: routeData.po_id,
-        product_id: routeData.product_id,
-        from_stage: routeData.from_stage,
-        qty_pass: qtyPass,
-        qty_ng: qtyNg,
+        lot_number: d.po_id,
+        product_id: d.product_id,
+        from_stage: d.from_stage,
+        qty_pass: p,
+        qty_ng: n,
         user_id: currentUser.id,
       }),
     });
-    const data = await response.json();
-    if (response.ok) {
-      alert("Đã cập nhật luân chuyển thành công!");
+    if (r.ok) {
+      alert("Thành công!");
       document.getElementById("qty-pass").value = 0;
       document.getElementById("qty-ng").value = 0;
       fetchPendingPOs();
     } else {
-      alert(data.error);
+      alert((await r.json()).error);
     }
-  } catch (error) {
-    alert("Lỗi kết nối máy chủ API!");
+  } catch (e) {
+    alert("Lỗi mạng!");
   }
 };
-
 function setDefaultDates() {
   const d = new Date().toISOString().split("T")[0];
   if (document.getElementById("po-date"))

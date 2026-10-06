@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>APP EMS BIC</title>
     <link rel="stylesheet" href="style.css" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#0f172a" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css"
@@ -19,11 +22,7 @@
     <div id="login-screen" class="screen active">
       <div class="login-card">
         <!-- Thay src bằng logo local của bạn -->
-        <img
-          src="https://via.placeholder.com/150x50?text=LOGO"
-          alt="Logo"
-          class="logo"
-        />
+        <img src="logo.png" alt="Logo" class="logo" />
         <h2>Đăng Nhập</h2>
         <form id="login-form">
           <div class="input-group">
@@ -44,6 +43,49 @@
             Sai tài khoản hoặc mật khẩu!
           </p>
         </form>
+        <div
+          id="change-pass-modal"
+          class="hidden"
+          style="
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+          "
+        >
+          <div
+            class="login-card"
+            style="
+              background: #fff;
+              padding: 20px;
+              border-radius: 8px;
+              width: 300px;
+            "
+          >
+            <h3 style="color: var(--maroon); margin-bottom: 15px">
+              Yêu Cầu Đổi Mật Khẩu
+            </h3>
+            <p style="font-size: 13px; color: #555; margin-bottom: 15px">
+              Vui lòng đổi mật khẩu mới để tiếp tục.
+            </p>
+            <input
+              type="password"
+              id="new-password"
+              placeholder="Mật khẩu mới..."
+              class="w-100"
+              style="margin-bottom: 10px; padding: 8px"
+            />
+            <button onclick="submitNewPassword()" class="btn btn-primary w-100">
+              Đăng nhập
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -62,7 +104,7 @@
             class="tab-btn active"
             onclick="switchTab('admin', 'tab-master')"
           >
-            Dữ Liệu chính
+            Quản Lý Mã Hàng
           </button>
           <button class="tab-btn" onclick="switchTab('admin', 'tab-po')">
             Quản Lý LOT
@@ -71,8 +113,11 @@
             Xử Lý Hàng NG
           </button>
           <button class="tab-btn" onclick="switchTab('admin', 'tab-matrix')">
-            Báo Cáo TK
+            Theo dõi Tđ
           </button>
+          <li class="tab-btn" onclick="switchTab('admin', 'tab-history')">
+            Lịch Sử SX
+          </li>
         </aside>
         <main class="content">
           <div id="tab-master" class="tab-content active">
@@ -88,7 +133,7 @@
               <!-- CỘT TRÁI: KHAI BÁO MÃ HÀNG -->
               <div class="card form-card" style="flex: 1; min-width: 350px">
                 <h2 style="margin-bottom: 20px; color: var(--navy)">
-                  Khai Báo Mã Hàng & Lộ Trình
+                  Tạo Mã Hàng & Lộ Trình
                 </h2>
                 <form id="form-create-product">
                   <div class="input-group">
@@ -97,7 +142,7 @@
                       type="text"
                       id="md-product-code"
                       required
-                      placeholder="VD: SP-01"
+                      placeholder="VD: TB-30"
                       style="text-transform: uppercase"
                     />
                   </div>
@@ -111,7 +156,7 @@
                     />
                   </div>
                   <div class="input-group">
-                    <label>Định Tuyến Lộ Trình (Quy định đường đi)</label>
+                    <label>Tạo Lộ Trình (Quy định đường đi)</label>
                     <div
                       id="routing-builder"
                       style="
@@ -128,7 +173,7 @@
                       onclick="addRoutingStep()"
                       style="margin-top: 10px; font-size: 14px"
                     >
-                      + Thêm Trạm
+                      + Thêm công đoạn
                     </button>
                   </div>
                   <button type="submit" class="btn btn-primary w-100">
@@ -167,16 +212,17 @@
               style="max-width: 600px; margin: 0 auto"
             >
               <h2 style="margin-bottom: 20px; color: var(--navy)">
-                Tạo LOT và Cấp Phát Sản Xuất
+                Tạo LOT và Đưa Sản Xuất
               </h2>
               <form id="form-create-po">
                 <div class="input-group">
-                  <label>Tiền tố số LOT (VD: PO1610)</label>
+                  <label>Số LOT (VD: PO1610)</label>
                   <input
                     type="text"
                     id="po-prefix"
                     required
                     placeholder="VD: PO1610"
+                    style="text-transform: uppercase"
                   />
                 </div>
                 <div class="input-group">
@@ -199,7 +245,7 @@
                     ><input type="number" id="po-total" required min="1" />
                   </div>
                   <div style="flex: 1">
-                    <label>SL 1 LOT (Kích thước chia)</label
+                    <label>SL 1 LOT (SL chia)</label
                     ><input type="number" id="po-split" required min="1" />
                   </div>
                 </div>
@@ -319,6 +365,35 @@
               <p>Đang tải dữ liệu...</p>
             </div>
           </div>
+          <!-- TAB LỊCH SỬ -->
+          <div id="tab-history" class="tab-content hidden">
+            <h2>Lịch Sử Giao Dịch (Tháng Này)</h2>
+            <div
+              class="card"
+              style="margin-top: 15px; overflow-x: auto; max-height: 500px"
+            >
+              <table class="matrix-table" id="history-table">
+                <thead>
+                  <tr>
+                    <th>Thời Gian</th>
+                    <th>Người Thao Tác</th>
+                    <th>Số PO / LOT</th>
+                    <th>Loại</th>
+                    <th>Số Lượng</th>
+                    <th>Từ Trạm</th>
+                    <th>Đến Trạm</th>
+                  </tr>
+                </thead>
+                <tbody id="history-tbody">
+                  <tr>
+                    <td colspan="7" style="text-align: center">
+                      Đang tải dữ liệu...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </main>
       </div>
     </div>
@@ -358,21 +433,55 @@
         </button>
       </div>
       <main class="content-mobile">
-        <div style="margin-bottom: 12px">
-          <input
-            type="text"
-            id="search-leader-po"
-            class="search-input w-100"
-            placeholder="🔍 Tìm nhanh Số LOT hoặc Mã hàng..."
-            onkeyup="filterLeaderPOs()"
-            style="
-              padding: 12px;
-              border: 1px solid var(--navy);
-              color: var(--navy);
-              font-weight: bold;
-              font-size: 15px;
-            "
-          />
+        <!-- KHU VỰC TÌM KIẾM MỚI CỦA LEADER (Phụ thuộc nhau) -->
+        <div style="display: flex; gap: 8px; margin-bottom: 15px; width: 100%">
+          <!-- Khung 1: Nhập/Chọn Mã Hàng -->
+          <div style="flex: 1; min-width: 0">
+            <input
+              type="text"
+              id="search-leader-product"
+              list="leader-product-list"
+              oninput="updateLeaderLotOptions()"
+              placeholder="🔍 Mã Hàng..."
+              style="
+                width: 100%;
+                padding: 8px 5px;
+                border-radius: 4px;
+                border: 1px solid #ccc;
+                font-weight: bold;
+                color: var(--navy);
+                text-transform: uppercase;
+                font-size: 13px;
+                box-sizing: border-box;
+              "
+              autocomplete="off"
+            />
+            <datalist id="leader-product-list"></datalist>
+          </div>
+
+          <!-- Khung 2: Nhập/Chọn Số LOT -->
+          <div style="flex: 1; min-width: 0">
+            <input
+              type="text"
+              id="search-leader-lot"
+              list="leader-lot-list"
+              oninput="filterLeaderPOs()"
+              placeholder="🔍 Số LOT..."
+              style="
+                width: 100%;
+                padding: 8px 5px;
+                border-radius: 4px;
+                border: 1px solid #ccc;
+                font-weight: bold;
+                color: var(--navy);
+                text-transform: uppercase;
+                font-size: 13px;
+                box-sizing: border-box;
+              "
+              autocomplete="off"
+            />
+            <datalist id="leader-lot-list"></datalist>
+          </div>
         </div>
         <div id="tab-wip" class="tab-content active">
           <!-- JS sẽ tự động đổ các thẻ Card chứa WIP vào đây -->
