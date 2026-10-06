@@ -367,26 +367,73 @@
           </div>
           <!-- TAB LỊCH SỬ -->
           <div id="tab-history" class="tab-content hidden">
-            <h2>Lịch Sử Giao Dịch (Tháng Này)</h2>
+            <h2 style="margin-bottom: 10px">Lịch Sử Giao Dịch</h2>
+
             <div
-              class="card"
-              style="margin-top: 15px; overflow-x: auto; max-height: 500px"
+              class="toolbar"
+              style="
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+                margin-bottom: 15px;
+              "
             >
-              <table class="matrix-table" id="history-table">
+              <input
+                type="date"
+                id="hist-date-from"
+                class="search-input"
+                title="Từ ngày"
+                style="flex: 1; min-width: 120px"
+                onchange="filterHistoryLog('admin')"
+              />
+              <input
+                type="date"
+                id="hist-date-to"
+                class="search-input"
+                title="Đến ngày"
+                style="flex: 1; min-width: 120px"
+                onchange="filterHistoryLog('admin')"
+              />
+              <select
+                id="hist-stage"
+                class="search-input"
+                style="flex: 1.5; min-width: 150px"
+                onchange="filterHistoryLog('admin')"
+              >
+                <option value="">-- Mọi công đoạn --</option>
+              </select>
+              <div style="flex: 2; min-width: 200px">
+                <input
+                  type="text"
+                  id="hist-keyword"
+                  list="hist-suggest"
+                  class="search-input w-100"
+                  placeholder="🔍 Gõ Mã Hàng / Số LOT..."
+                  oninput="filterHistoryLog('admin')"
+                  autocomplete="off"
+                  style="text-transform: uppercase"
+                />
+                <datalist id="hist-suggest"></datalist>
+              </div>
+            </div>
+
+            <div class="card" style="overflow-x: auto; max-height: 500px">
+              <table class="matrix-table">
                 <thead>
                   <tr>
                     <th>Thời Gian</th>
                     <th>Người Thao Tác</th>
-                    <th>Số PO / LOT</th>
+                    <th>Mã Hàng</th>
+                    <th>Số PO/LOT</th>
                     <th>Loại</th>
-                    <th>Số Lượng</th>
-                    <th>Từ Trạm</th>
-                    <th>Đến Trạm</th>
+                    <th>SL</th>
+                    <th>Từ</th>
+                    <th>Đến</th>
                   </tr>
                 </thead>
                 <tbody id="history-tbody">
                   <tr>
-                    <td colspan="7" style="text-align: center">
+                    <td colspan="8" style="text-align: center">
                       Đang tải dữ liệu...
                     </td>
                   </tr>
@@ -431,18 +478,39 @@
         >
           Thao Tác
         </button>
+        <button
+          class="tab-btn-mobile"
+          onclick="switchTab('leader', 'tab-history-leader')"
+        >
+          Hàng đã giao
+        </button>
       </div>
-      <main class="content-mobile">
-        <!-- KHU VỰC TÌM KIẾM MỚI CỦA LEADER (Phụ thuộc nhau) -->
-        <div style="display: flex; gap: 8px; margin-bottom: 15px; width: 100%">
-          <!-- Khung 1: Nhập/Chọn Mã Hàng -->
+      <!-- TOÀN BỘ KHU VỰC GIAO DIỆN LEADER (Đã sắp xếp chuẩn Flexbox) -->
+      <main
+        class="content-mobile"
+        style="display: flex; flex-direction: column"
+      >
+        <!-- 1. TAB WIP (SỐ LƯỢNG TỒN): Nơi JS đổ dữ liệu thẻ hàng hóa vào -->
+        <div id="tab-wip" class="tab-content active" style="order: 2"></div>
+
+        <!-- 2. THANH TÌM KIẾM: Được đẩy lên đầu bằng CSS, tách biệt hoàn toàn khỏi Tab WIP -->
+        <div
+          id="leader-search-group"
+          style="
+            order: 1;
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+            width: 100%;
+          "
+        >
           <div style="flex: 1; min-width: 0">
             <input
               type="text"
               id="search-leader-product"
               list="leader-product-list"
               oninput="updateLeaderLotOptions()"
-              placeholder="🔍 Mã Hàng..."
+              placeholder="🔍 MÃ HÀNG..."
               style="
                 width: 100%;
                 padding: 8px 5px;
@@ -458,15 +526,13 @@
             />
             <datalist id="leader-product-list"></datalist>
           </div>
-
-          <!-- Khung 2: Nhập/Chọn Số LOT -->
           <div style="flex: 1; min-width: 0">
             <input
               type="text"
               id="search-leader-lot"
               list="leader-lot-list"
               oninput="filterLeaderPOs()"
-              placeholder="🔍 Số LOT..."
+              placeholder="🔍 SỐ LOT..."
               style="
                 width: 100%;
                 padding: 8px 5px;
@@ -483,10 +549,16 @@
             <datalist id="leader-lot-list"></datalist>
           </div>
         </div>
-        <div id="tab-wip" class="tab-content active">
-          <!-- JS sẽ tự động đổ các thẻ Card chứa WIP vào đây -->
-        </div>
-        <div id="tab-action" class="tab-content hidden">
+
+        <!-- 3. CSS MA THUẬT: Tự động ẩn thanh tìm kiếm khi Leader chuyển sang Tab khác -->
+        <style>
+          #tab-wip.hidden + #leader-search-group {
+            display: none !important;
+          }
+        </style>
+
+        <!-- 4. TAB THAO TÁC (Giao nhận) -->
+        <div id="tab-action" class="tab-content hidden" style="order: 3">
           <div class="card form-card">
             <h3 style="color: var(--navy); margin-bottom: 15px">Giao Nhận</h3>
             <div class="input-group">
@@ -499,9 +571,8 @@
                 <option>-- Đang tải dữ liệu --</option>
               </select>
             </div>
-            <!-- Các input số lượng giữ nguyên như cũ -->
             <div class="input-group">
-              <label>Số lượng giao</label>
+              <label>Số lượng giao (PASS)</label>
               <input type="number" id="qty-pass" value="0" />
             </div>
             <div class="input-group">
@@ -518,6 +589,92 @@
             >
               Xuất Gia Công Ngoài
             </button>
+          </div>
+        </div>
+
+        <!-- 5. TAB LỊCH SỬ LEADER -->
+        <div
+          id="tab-history-leader"
+          class="tab-content hidden"
+          style="order: 4"
+        >
+          <h3 style="color: var(--navy); margin-bottom: 15px">
+            Lịch Sử Giao Dịch
+          </h3>
+
+          <div
+            style="
+              display: flex;
+              gap: 8px;
+              flex-wrap: wrap;
+              margin-bottom: 10px;
+            "
+          >
+            <input
+              type="date"
+              id="hist-date-from-ld"
+              class="search-input"
+              title="Từ ngày"
+              style="flex: 1; padding: 8px"
+              onchange="filterHistoryLog('leader')"
+            />
+            <input
+              type="date"
+              id="hist-date-to-ld"
+              class="search-input"
+              title="Đến ngày"
+              style="flex: 1; padding: 8px"
+              onchange="filterHistoryLog('leader')"
+            />
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-bottom: 15px">
+            <select
+              id="hist-stage-ld"
+              class="search-input"
+              style="flex: 1; padding: 8px"
+              onchange="filterHistoryLog('leader')"
+            >
+              <option value="">-- Mọi trạm --</option>
+            </select>
+            <div style="flex: 1.5; min-width: 0">
+              <input
+                type="text"
+                id="hist-keyword-ld"
+                list="hist-suggest-ld"
+                class="search-input"
+                placeholder="🔍 Gõ Mã / LOT..."
+                oninput="filterHistoryLog('leader')"
+                autocomplete="off"
+                style="width: 100%; padding: 8px; text-transform: uppercase"
+              />
+              <datalist id="hist-suggest-ld"></datalist>
+            </div>
+          </div>
+
+          <div
+            class="card"
+            style="overflow-x: auto; max-height: 500px; padding: 0"
+          >
+            <table class="matrix-table" style="min-width: 600px">
+              <thead>
+                <tr>
+                  <th>Thời Gian</th>
+                  <th>Người Thao Tác</th>
+                  <th>Mã Hàng</th>
+                  <th>Số LOT</th>
+                  <th>Loại</th>
+                  <th>SL</th>
+                  <th>Từ</th>
+                  <th>Đến</th>
+                </tr>
+              </thead>
+              <tbody id="history-tbody-leader">
+                <tr>
+                  <td colspan="8" style="text-align: center">Đang tải...</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </main>

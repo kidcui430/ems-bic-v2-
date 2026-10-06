@@ -182,6 +182,7 @@ function switchTab(role, tabId) {
 
   if (role === "admin" && tabId === "tab-matrix") fetchMatrixReport();
   if (role === "admin" && tabId === "tab-history") fetchHistoryLog();
+  if (role === "leader" && tabId === "tab-history-leader") fetchHistoryLog();
 }
 
 // ==========================================
@@ -537,45 +538,137 @@ window.filterMatrix = function () {
   );
 };
 
+let historyLogCache = [];
+
 async function fetchHistoryLog() {
   try {
     const res = await fetch(`${API_BASE_URL}/api/history`);
     const result = await res.json();
-    const tbody = document.getElementById("history-tbody");
-    if (!tbody) return;
 
-    if (result.data && result.data.length > 0) {
-      tbody.innerHTML = result.data
-        .map((log) => {
-          let timeStr = "Chưa rõ";
-          if (log.timestamp) {
-            try {
-              const utcDate = new Date(log.timestamp.replace(" ", "T") + "Z");
-              timeStr = utcDate.toLocaleString("vi-VN", {
-                timeZone: "Asia/Ho_Chi_Minh",
-                hour12: false,
-              });
-            } catch (e) {}
-          }
-          const typeStyle =
-            log.type === "PASS"
-              ? "color:#48BB78; font-weight:bold;"
-              : "color:#ea580c; font-weight:bold;";
-          const nameStr = log.full_name
-            ? `${log.full_name} (${log.username})`
-            : log.username || "Hệ thống";
-
-          return `<tr><td>${timeStr}</td><td>${nameStr}</td><td style="color:var(--navy); font-weight:bold;">${log.po_id || "-"}</td><td style="${typeStyle}">${log.type || "-"}</td><td style="font-weight:bold;">${log.qty || 0}</td><td>${log.from_stage || "-"}</td><td>${log.to_stage || "-"}</td></tr>`;
-        })
-        .join("");
-    } else {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 20px;">Chưa có giao dịch nào!</td></tr>`;
+    if (result.data) {
+      historyLogCache = result.data;
+      populateHistoryFilters(); // Sinh Gợi ý & Dropdown
+      filterHistoryLog("admin"); // Lọc bảng Admin
+      filterHistoryLog("leader"); // Lọc bảng Leader
     }
   } catch (e) {
     console.error("Lỗi tải lịch sử:", e);
-    const tbody = document.getElementById("history-tbody");
-    if (tbody)
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: red;">Lỗi kết nối API!</td></tr>`;
+  }
+}
+
+function populateHistoryFilters() {
+  // 1. Sinh danh sách Công đoạn (Stages)
+  let stageOpts = '<option value="">-- Mọi công đoạn --</option>';
+  globalStages.forEach((st) => {
+    stageOpts += `<option value="${st.id}">${st.stage_name}</option>`;
+  });
+  if (document.getElementById("hist-stage"))
+    document.getElementById("hist-stage").innerHTML = stageOpts;
+  if (document.getElementById("hist-stage-ld"))
+    document.getElementById("hist-stage-ld").innerHTML = stageOpts;
+
+  // 2. Sinh Gợi ý (Autocomplete) gộp cả Mã Hàng và Số LOT
+  const uniqueKeywords = [
+    ...new Set([
+      ...historyLogCache.map((h) => h.po_id),
+      ...historyLogCache.map((h) => h.product_code),
+    ]),
+  ].filter(Boolean);
+
+  const suggestHTML = uniqueKeywords
+    .map((k) => `<option value="${k}">`)
+    .join("");
+  if (document.getElementById("hist-suggest"))
+    document.getElementById("hist-suggest").innerHTML = suggestHTML;
+  if (document.getElementById("hist-suggest-ld"))
+    document.getElementById("hist-suggest-ld").innerHTML = suggestHTML;
+}
+
+window.filterHistoryLog = function (role) {
+  const isLd = role === "leader";
+  const dateFrom =
+    document.getElementById(isLd ? "hist-date-from-ld" : "hist-date-from")
+      ?.value || "";
+  const dateTo =
+    document.getElementById(isLd ? "hist-date-to-ld" : "hist-date-to")?.value ||
+    "";
+  const stageVal =
+    document.getElementById(isLd ? "hist-stage-ld" : "hist-stage")?.value || "";
+  const keyword = (
+    document.getElementById(isLd ? "hist-keyword-ld" : "hist-keyword")?.value ||
+    ""
+  )
+    .toUpperCase()
+    .trim();
+
+  const filtered = historyLogCache.filter((log) => {
+    // Lọc ngày (Date Range)
+    let matchDate = true;
+    if (log.timestamp) {
+      const logDate = log.timestamp.split(" ")[0]; // Cắt lấy phần yyyy-mm-dd
+      if (dateFrom && logDate < dateFrom) matchDate = false;
+      if (dateTo && logDate > dateTo) matchDate = false;
+    }
+
+    // Lọc công đoạn (Trùng Từ Trạm hoặc Đến Trạm)
+    let matchStage = true;
+    if (stageVal) {
+      matchStage = log.from_stage === stageVal || log.to_stage === stageVal;
+    }
+
+    // Lọc Từ Khóa (Tìm trong LOT hoặc Mã Hàng)
+    let matchKw = true;
+    if (keyword) {
+      const po = (log.po_id || "").toUpperCase();
+      const prd = (log.product_code || "").toUpperCase();
+      matchKw = po.includes(keyword) || prd.includes(keyword);
+    }
+
+    return matchDate && matchStage && matchKw;
+  });
+
+  renderHistoryTable(filtered, isLd ? "history-tbody-leader" : "history-tbody");
+};
+
+function renderHistoryTable(data, tbodyId) {
+  const tbody = document.getElementById(tbodyId);
+  if (!tbody) return;
+
+  if (data.length > 0) {
+    tbody.innerHTML = data
+      .map((log) => {
+        let timeStr = "Chưa rõ";
+        if (log.timestamp) {
+          try {
+            const utcDate = new Date(log.timestamp.replace(" ", "T") + "Z");
+            timeStr = utcDate.toLocaleString("vi-VN", {
+              timeZone: "Asia/Ho_Chi_Minh",
+              hour12: false,
+            });
+          } catch (e) {}
+        }
+        const typeStyle =
+          log.type === "PASS"
+            ? "color:#48BB78; font-weight:bold;"
+            : "color:#ea580c; font-weight:bold;";
+        const nameStr = log.full_name
+          ? `${log.full_name} (${log.username})`
+          : log.username || "Hệ thống";
+
+        return `<tr>
+                <td>${timeStr}</td>
+                <td>${nameStr}</td>
+                <td style="color:var(--navy); font-weight:bold;">${log.product_code || "-"}</td>
+                <td style="font-weight:bold;">${log.po_id || "-"}</td>
+                <td style="${typeStyle}">${log.type || "-"}</td>
+                <td style="font-weight:bold; color:#e53e3e;">${log.qty || 0}</td>
+                <td>${log.from_stage || "-"}</td>
+                <td>${log.to_stage || "-"}</td>
+            </tr>`;
+      })
+      .join("");
+  } else {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px;">Không tìm thấy giao dịch nào!</td></tr>`;
   }
 }
 
@@ -759,6 +852,28 @@ function renderLeaderPOs(data) {
     wipContainer.innerHTML = `<div class="card" style="text-align: center; color: var(--gray-dark); padding: 30px;">Không có lô hàng nào kẹt tại công đoạn bạn quản lý.</div>`;
   }
 }
+
+window.exportExcel = function () {
+  const table = document.getElementById("export-table");
+  if (!table) return alert("Không tìm thấy bảng dữ liệu để xuất!");
+
+  let csv = "\uFEFF"; // Hỗ trợ hiển thị tiếng Việt trên Excel
+  const rows = table.querySelectorAll("tr");
+
+  rows.forEach((row) => {
+    const cols = row.querySelectorAll("th, td");
+    const rowData = Array.from(cols).map(
+      (c) => `"${c.innerText.replace(/"/g, '""')}"`,
+    );
+    csv += rowData.join(",") + "\n";
+  });
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `Bao_Cao_WIP_${new Date().toLocaleDateString("vi-VN").replace(/\//g, "-")}.csv`;
+  link.click();
+};
 
 window.submitMove = async function () {
   const selectEl = document.getElementById("po-select");
